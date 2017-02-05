@@ -1,4 +1,6 @@
 
+from struct import *
+
 from track import ID3Tag
 from tagMethods import TagAbstract
 import logging
@@ -47,10 +49,11 @@ class ExtractMetadata:
 		id3_tag = None
 		tag_parser = None
 
-		if(hasID3V2Tag):
-			id3_tag = ID3V2Parser(meta_tag)
-		elif (hasID3V1Tag):
+
+		if(hasID3V1Tag):
 			id3_tag = ID3V1Parser(meta_tag)
+		elif (hasID3V2Tag):
+			id3_tag = ID3V2Parser(meta_tag)
 		else:
 			# use for testing
 			parsed_path = path.split('/')
@@ -103,11 +106,12 @@ class ID3V2Parser(TagAbstract):	 # must implement methods from TagAbstract
      			- meta tag object storing track metadata
 	"""
 
+	# option : (start,end,format character for struct)
 	main_hdr_struct = {
-		'file_id' : (0,3),
-		'version' : (3,5),
-		'flags' : (5,6),
-		'size' : (6,10)
+		'file_id' : (0,3,'3s'),
+		'version' : (3,5,'h'),
+	    'flags' : (5,6,'1c'),
+	    'size' : (6,10,'i')
 	}
 
 
@@ -117,9 +121,17 @@ class ID3V2Parser(TagAbstract):	 # must implement methods from TagAbstract
 
 		#print meta_tag[0:3]
 
-		for opt, (start, end) in self.main_hdr_struct.items():
-			self.id3_tag.hdr[opt] = self.meta_tag[start:end]
 
+
+
+		for opt, (start, end, format_char) in self.main_hdr_struct.items():
+			val = unpack(format_char, self.meta_tag[start:end])
+			self.id3_tag.hdr[opt] = val[0]
+			#print opt,':', self.id3_tag.hdr[opt]
+
+		print  "ID3v2."+str(self.id3_tag.hdr['version'])
+
+		#print 'Version 3v',self.id3_tag.hdr['file_id']
 		self.findFrames()
 
 		# print self.id3_tag.hdr['file_id'] + 'V2.' + self.id3_tag.hdr['version']
@@ -129,24 +141,51 @@ class ID3V2Parser(TagAbstract):	 # must implement methods from TagAbstract
 
 
 
-	#
-	#	search file metadata for frames
-	#	Frame Header
-	#		=> Frame ID      $xx xx xx xx  (4 bytes) 
-	#		=> Size      4 * %0xxxxxxx	   (4 bytes)
-    #		=> Flags         $xx xx		   (2 bytes)
+	##============================================================================================
+	#	ID3V2.3 ID3V2.4
 	#	
-	#	Frame IDs:	
-	#		=> TIT2
-	# 			- 	The 'Title/Songname/Content description' frame is the actual name of
-	# 				the piece (e.g. "Adagio", "Hurricane Donna").
+	#		Frame Header
+	#			=> Frame ID      $xx xx xx xx  (4 bytes) 
+	#			=> Size      4 * %0xxxxxxx	   (4 bytes)
+    #			=> Flags         $xx xx		   (2 bytes)
+	#	
+	#		Frame IDs:	
+	#			=> TIT2
+	# 				- 	The 'Title/Songname/Content description' frame is the actual name of
+	# 					the piece (e.g. "Adagio", "Hurricane Donna").
+	#============================================================================================
+	#	ID3V2
+	#
+	#		Frame Header
+	#			=> Frame ID      $xx xx xx   (3 bytes) 
+	#			=> Size      	 $xx xx xx   (3 bytes)
+	#
+	#
+	
 
-	#
-	#
-	#	10:14 TIT2
-	#	14:18 \x00\x00\x00\x12
-	#	18:20 Flags
-	# 	20:20+18 Song name
+
+
+	# ID3V2.x
+	frame_struct_sizes = {
+		2: {				# ID3V2.2
+			'id': 3,
+			'size': 3
+		},
+		3: {				# ID3V2.3
+			'id': 4,
+			'size': 4,
+			'flags': 2
+		},
+		4: {
+			'id': 4,		# ID3V2.4
+			'size': 4,
+			'flags': 2
+		}
+	}
+
+	# id3v2.3
+	# ./test/GIVS.mp3
+	# ./test/DWAH.mp3
 	def findFrames(self):
 		FRAME_START_POS = 10
 		frame_start = FRAME_START_POS
@@ -184,8 +223,11 @@ class ID3V2Parser(TagAbstract):	 # must implement methods from TagAbstract
 			# 14:18 x00\x00\x00\x12
 			# 18:
  
+			print frame_id
+
  			# parse song name
-			if(frame_id=='TIT2'):
+ 			# ID3v2.3, ID3v2.4
+			if frame_id=='TIT2':
 				song_name_start = (
 					frame_start +
 					frame_id_in_bytes +
@@ -196,10 +238,15 @@ class ID3V2Parser(TagAbstract):	 # must implement methods from TagAbstract
 				song_name_end = song_name_start + frame_size
 				
 				song_name = self.meta_tag[song_name_start:song_name_end]
+			
+			elif frame_id=='TT2':	# ID3V2.2
+				# http://id3.org/id3v2-00
 
 
-				print 'Frame ID: ' ,frame_id
-				print 'Frame Size: ',frame_size
+
+
+			#	print 'Frame ID: ' ,frame_id
+			#	print 'Frame Size: ',frame_size
 				print song_name
 
 			# format size from 4 hex values to hex string so we can convert to int form
@@ -248,11 +295,15 @@ class ID3V1Parser(TagAbstract):		# must implement methods from TagAbstract
 
 	def __init__(self, meta_tag):
 		self.meta_tag = meta_tag
-		pass
+		song_name = meta_tag[-125:-95]
+		print 'ID3V1'
+		print song_name
+
+		
 
 	@staticmethod
 	def isID3V1(meta_tag):
-		return (meta_tag[-128:-125] == 'TAG')
+		return meta_tag[-128:-125] == 'TAG'
 
 	def getTitle(self):
 		pass
