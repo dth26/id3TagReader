@@ -50,10 +50,10 @@ class ExtractMetadata:
 		tag_parser = None
 
 
-		if(hasID3V1Tag):
-			id3_tag = ID3V1Parser(meta_tag)
-		elif (hasID3V2Tag):
+		if(hasID3V2Tag):
 			id3_tag = ID3V2Parser(meta_tag)
+		elif (hasID3V1Tag):
+			id3_tag = ID3V1Parser(meta_tag)
 		else:
 			# use for testing
 			parsed_path = path.split('/')
@@ -119,10 +119,7 @@ class ID3V2Parser(TagAbstract):	 # must implement methods from TagAbstract
 		self.id3_tag = ID3Tag()
 		self.meta_tag = meta_tag #
 
-		#print meta_tag[0:3]
-
-
-
+		#print meta_tag[0:3
 
 		for opt, (start, end, format_char) in self.main_hdr_struct.items():
 			val = unpack(format_char, self.meta_tag[start:end])
@@ -147,14 +144,17 @@ class ID3V2Parser(TagAbstract):	 # must implement methods from TagAbstract
 	#		Frame Header
 	#			=> Frame ID      $xx xx xx xx  (4 bytes) 
 	#			=> Size      4 * %0xxxxxxx	   (4 bytes)
-    #			=> Flags         $xx xx		   (2 bytes)
-	#	
+    #			=> Flags         $xx xx		   (2 bytes)	
+	#
 	#		Frame IDs:	
 	#			=> TIT2
 	# 				- 	The 'Title/Songname/Content description' frame is the actual name of
 	# 					the piece (e.g. "Adagio", "Hurricane Donna").
 	#============================================================================================
-	#	ID3V2
+	#	ID3V2.2
+	#
+	# 		./test/GIVS.mp3
+	#	 	./test/DWAH.mp3
 	#
 	#		Frame Header
 	#			=> Frame ID      $xx xx xx   (3 bytes) 
@@ -166,99 +166,91 @@ class ID3V2Parser(TagAbstract):	 # must implement methods from TagAbstract
 
 
 	# ID3V2.x
-	frame_struct_sizes = {
-		2: {				# ID3V2.2
-			'id': 3,
-			'size': 3
+	# decribes frame header info
+	# the key x describes the tags major value
+	frame_hdr_structs = {
+		# ID3V2.2
+		2: {	
+			'attrs' : {			
+				'id': (0,3),						# relative to frame start index, id starts at index 0 and ends at index 3
+				'size': (3,6)
+			},
+			'hdr_size' : 6, 						# frame header size
+			'song_frame_size': 30					# TT2 or TIT2	
+
 		},
 		3: {				# ID3V2.3
-			'id': 4,
-			'size': 4,
-			'flags': 2
+			'attrs' : {	
+				'id': (0,4),
+				'size': (4,8),
+				'flags': (8,10)
+			},
+			'hdr_size' : 10, 						# frame header size
+			'song_frame_size': None					# TT2 or TIT2	
 		},
 		4: {
-			'id': 4,		# ID3V2.4
-			'size': 4,
-			'flags': 2
+			'attrs' : {
+				'id': (0,4),
+				'size': (4,8),
+				'flags': (8,10)
+			},
+			'hdr_size' : 10,
+			'song_frame_size': None					# TT2 or TIT2	
 		}
 	}
 
-	# id3v2.3
-	# ./test/GIVS.mp3
-	# ./test/DWAH.mp3
+
 	def findFrames(self):
-		FRAME_START_POS = 10
-		frame_start = FRAME_START_POS
+		# major version of the tag
+		# the x value in ID3v2.x
+		tag_maj_vers= self.id3_tag.hdr['version']
+		frame_hdr_struct = self.frame_hdr_structs[tag_maj_vers]
+		frame_attrs = {
+			'id': None,
+			'size': None,
+			'flags': None
+		}
+		 
+		frame_start = 10
 
 		while( frame_start < len(self.meta_tag) ):
-			frame_id = self.meta_tag[frame_start:(frame_start+4)]
 
-		
-			# frame_size_str = (
-			# 		str(ord( self.meta_tag[(ptr+4):(ptr+5)] )) +
-			# 		str(ord( self.meta_tag[(ptr+5):(ptr+6)] )) +
-			# 		str(ord( self.meta_tag[(ptr+6):(ptr+7)] )) +
-			# 		str(ord( self.meta_tag[(ptr+7):(ptr+8)] ))
-			# 	)
+			for opt, (start,end) in frame_hdr_struct['attrs'].items():
+				#
+				#	opt = size|flags|id
+				#
+				
+				frame_attrs[opt] = self.meta_tag[ (frame_start + start):(frame_start + end) ]
+				#print opt,start,end, frame_attrs[opt]
 
-			frame_size_list = [
-				str(ord( self.meta_tag[(frame_start+4):(frame_start+5)] )) ,
-				str(ord( self.meta_tag[(frame_start+5):(frame_start+6)] )) ,
-				str(ord( self.meta_tag[(frame_start+6):(frame_start+7)] )) ,
-				str(ord( self.meta_tag[(frame_start+7):(frame_start+8)] ))
-			]
-
-
-			#frame_size_str_arr = list(frame_size_list) 
-			frame_size_str = ''.join(str(s) for s in frame_size_list)
-			frame_size = int(frame_size_str)
-
-			flags_in_bytes = 2 			# bytes
-			size_in_bytes = 4  		# size in bytes
-			frame_id_in_bytes = 4
-
-			#print "frame data: " + self.meta_tag[(ptr+8):(ptr+8+frame_size)]
-
-			# 10:14	TITV
-			# 14:18 x00\x00\x00\x12
-			# 18:
- 
-			print frame_id
+				if opt=='size':
+					#frame_attrs['size'] = [ord(b) for b in frame_attrs['size'] ]
+					frame_size_str = ''.join(str(ord(s)) for s in frame_attrs['size'])
+					frame_attrs['size'] = int(frame_size_str)
 
  			# parse song name
- 			# ID3v2.3, ID3v2.4
-			if frame_id=='TIT2':
+ 			# TIT2 => ID3V2.3, ID3V2.4
+ 			# TT2 => ID3V2.2
+			if frame_attrs['id']=='TIT2' or frame_attrs['id']=='TT2':
 				song_name_start = (
 					frame_start +
-					frame_id_in_bytes +
-					size_in_bytes +
-					flags_in_bytes 
+					frame_hdr_struct['hdr_size']
 				)
-
-				song_name_end = song_name_start + frame_size
 				
+
+		
+				song_name_end = song_name_start + frame_attrs['size']
+
+
 				song_name = self.meta_tag[song_name_start:song_name_end]
-			
-			elif frame_id=='TT2':	# ID3V2.2
-				# http://id3.org/id3v2-00
 
-
-
-
-			#	print 'Frame ID: ' ,frame_id
-			#	print 'Frame Size: ',frame_size
+				#print ,'; size: ',frame_attrs['size']
 				print song_name
 
-			# format size from 4 hex values to hex string so we can convert to int form
-			# frame_size_str = '{1}{2}{3}{4}'.format(
-			# 		ord( self.meta_tag[(ptr+4):(ptr+5)] ),
-			# 		ord( self.meta_tag[(ptr+5):(ptr+6)] ),
-			# 		ord( self.meta_tag[(ptr+6):(ptr+7)] ),
-			# 		ord( self.meta_tag[(ptr+7):(ptr+8)] )
-			# 	)
+			
+			frame_hdr_size = frame_hdr_struct['hdr_size']
+			frame_start += (frame_attrs['size'] + frame_hdr_size)		# (size of frame content + size of frame header)
 
-			frame_header_size = 10
-			frame_start += (frame_size + frame_header_size)
 
 
 
@@ -277,6 +269,7 @@ class ID3V2Parser(TagAbstract):	 # must implement methods from TagAbstract
 
 		return flags
 
+	# tags with 'ID3' in first 3 bytes of file is an ID3v2 tag
 	@staticmethod
 	def isID3V2(meta_tag):
 		return (meta_tag[0:3] == 'ID3')
